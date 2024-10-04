@@ -17,7 +17,7 @@ source-repository head
 
 library
   exposed-modules:
-      Lib
+      Parser
   other-modules:
       Paths_firs
   hs-source-dirs:
@@ -29,6 +29,7 @@ library
     , llvm-hs-pretty ==0.9.0.0
     , llvm-hs-pure ==9.0.0
     , megaparsec
+    , parser-combinators
     , text
   default-language: Haskell2010
 
@@ -46,6 +47,7 @@ executable firs-exe
     , llvm-hs-pretty ==0.9.0.0
     , llvm-hs-pure ==9.0.0
     , megaparsec
+    , parser-combinators
     , text
   default-language: Haskell2010
 
@@ -64,5 +66,6 @@ test-suite firs-test
     , llvm-hs-pretty ==0.9.0.0
     , llvm-hs-pure ==9.0.0
     , megaparsec
+    , parser-combinators
     , text
   default-language: Haskell2010
