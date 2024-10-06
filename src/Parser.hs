@@ -19,6 +19,7 @@ data Expr
   | ArrayLit [Expr]
   | IfExpr Expr Expr (Maybe Expr)
   | FuncDeclare String [(String, String)] String Expr -- Function Name, [(ArgName, Type)], ReturnType, Body
+  | FuncCall Expr [Expr]
   deriving (Show, Eq)
 
 type Parser = Parsec Void String
@@ -31,6 +32,9 @@ lexeme = L.lexeme sc
 
 symbol :: String -> Parser String
 symbol = L.symbol sc
+
+parens :: Parser a -> Parser a
+parens pExpr_ = symbol "(" *> pExpr_ <* symbol ")"
 
 identifier :: Parser String
 identifier = lexeme $ (:) <$> letterChar <*> many alphaNumChar
@@ -68,9 +72,15 @@ pIfExpr =
 pFuncDeclare :: Parser Expr
 pFuncDeclare =
   let arg = (,) <$> identifier <*> typeAnnotation
-      argAndTypes = symbol "(" *> (arg `sepBy` symbol ",") <* symbol ")"
+      argAndTypes = parens $ arg `sepBy` symbol ","
       body = symbol "=" *> pExpr
    in FuncDeclare <$> identifier <*> argAndTypes <*> typeAnnotation <*> body
+
+pFuncCall :: Parser Expr
+pFuncCall =
+  let fn = parens pExpr <|> pVar
+      args = parens $ pExpr `sepBy` symbol ","
+   in FuncCall <$> fn <*> args
 
 pBinaryOp :: Parser Expr
 pBinaryOp = makeExprParser pTerm operatorTable
@@ -88,7 +98,8 @@ pExpr =
       try pVarDeclare,
       try pAssign,
       try pFuncDeclare,
-      pBinaryOp,
+      try pFuncCall,
+      try pBinaryOp,
       pArrayLit,
       pIntLit,
       pStringLit,
@@ -102,7 +113,7 @@ pTerm =
       pStringLit,
       pVar,
       pArrayLit,
-      symbol "(" *> pExpr <* symbol ")"
+      parens pExpr
     ]
 
 pProgram :: Parser [Expr]
