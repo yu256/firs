@@ -69,23 +69,27 @@ pAssign :: Parser Expr
 pAssign = Assign <$> identifier <* symbol "<-" <*> pExpr
 
 pIfExpr :: Parser Expr
-pIfExpr =
-  let cond = symbol "if" *> pExpr <* symbol "then"
-      elseExpr = optional $ symbol "else" *> pExpr
-   in IfExpr <$> cond <*> pExpr <*> elseExpr
+pIfExpr = do
+  cond <- symbol "if" *> pExpr <* symbol "then"
+  thenExpr <- pExpr
+  elseExpr <- optional $ symbol "else" *> pExpr
+  pure $ IfExpr cond thenExpr elseExpr
 
 pFuncDeclare :: Parser Expr
-pFuncDeclare =
-  let arg = (,) <$> identifier <*> typeAnnotation
-      argAndTypes = parens $ arg `sepBy` symbol1 ','
-      body = symbol1 '=' *> pExpr
-   in FuncDeclare <$> identifier <*> argAndTypes <*> typeAnnotation <*> body
+pFuncDeclare = do
+  funcName <- identifier
+  argAndTypes <- parens $ pArgs `sepBy` symbol1 ','
+  returnType <- typeAnnotation
+  symbol1 '='
+  FuncDeclare funcName argAndTypes returnType <$> pExpr
+  where
+    pArgs = (,) <$> identifier <*> typeAnnotation
 
 pFuncCall :: Parser Expr
-pFuncCall =
-  let fn = parens pExpr <|> pVar
-      args = parens $ pExpr `sepBy` symbol1 ','
-   in FuncCall <$> fn <*> args
+pFuncCall = do
+  fn <- parens pExpr <|> pVar
+  args <- parens $ pExpr `sepBy` symbol1 ','
+  pure $ FuncCall fn args
 
 pBinaryOp :: Parser Expr
 pBinaryOp = makeExprParser pTerm operatorTable
