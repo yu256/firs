@@ -32,14 +32,14 @@ sc = L.space space1 (L.skipLineComment "//") (L.skipBlockComment "/*" "*/")
 lexeme :: Parser a -> Parser a
 lexeme = L.lexeme sc
 
-symbol :: String -> Parser String
-symbol = L.symbol sc
+symbol :: String -> Parser ()
+symbol = void . L.symbol sc
 
 symbol1 :: Char -> Parser ()
-symbol1 c = char c *> sc
+symbol1 = (*> sc) . char
 
 parens :: Parser a -> Parser a
-parens pExpr_ = symbol1 '(' *> pExpr_ <* symbol1 ')'
+parens = between (symbol1 '(') (symbol1 ')')
 
 identifier :: Parser String
 identifier = lexeme $ (:) <$> letterChar <*> many alphaNumChar
@@ -127,7 +127,7 @@ pTerm =
     ]
 
 exprSeparator :: Parser ()
-exprSeparator = void $ lexeme $ char ';' <|> char '\n'
+exprSeparator = symbol1 ';'
 
 pBlock :: Parser Expr
 pBlock = Block <$> (symbol1 '{' *> pExpr `sepEndBy` exprSeparator <* symbol1 '}')
