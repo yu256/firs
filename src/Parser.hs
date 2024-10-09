@@ -13,16 +13,18 @@ data Expr
   = IntLit Integer
   | StringLit String
   | Var String
-  | ValDeclare String String Expr -- Value Name, Type Name, Value
-  | VarDeclare String String Expr -- Variable Name, Type Name, Value
+  | ValDeclare String Type Expr -- Value Name, Type Name, Value
+  | VarDeclare String Type Expr -- Variable Name, Type Name, Value
   | Assign String Expr
   | BinaryOp String Expr Expr
   | ArrayLit [Expr]
   | IfExpr Expr Expr (Maybe Expr)
-  | FuncDeclare String [(String, String)] String Expr -- Function Name, [(ArgName, Type)], ReturnType, Body
+  | FuncDeclare String [(String, Type)] Type Expr -- Function Name, [(ArgName, Type)], ReturnType, Body
   | FuncCall Expr [Expr]
   | Block [Expr]
   deriving (Show, Eq)
+
+type Type = [String] -- ensure nonEmpty
 
 type Parser = Parsec Void String
 
@@ -44,8 +46,8 @@ parens = between (symbol1 '(') (symbol1 ')')
 identifier :: Parser String
 identifier = lexeme $ (:) <$> letterChar <*> many alphaNumChar
 
-typeAnnotation :: Parser String
-typeAnnotation = symbol1 ':' *> identifier
+typeAnnotation :: Parser Type
+typeAnnotation = symbol1 ':' *> some identifier
 
 pIntLit :: Parser Expr
 pIntLit = IntLit <$> lexeme L.decimal
