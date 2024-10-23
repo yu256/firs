@@ -101,8 +101,17 @@ pBinaryOp :: Parser Expr
 pBinaryOp = makeExprParser pTerm operatorTable
   where
     operatorTable =
-      [ [InfixL $ BinaryOp "*" <$ symbol1 '*', InfixL $ BinaryOp "/" <$ symbol1 '/'],
-        [InfixL $ BinaryOp "+" <$ symbol1 '+', InfixL $ BinaryOp "-" <$ symbol1 '-']
+      [ [InfixR $ BinaryOp "^" <$ symbol1 '^'],
+        [InfixL $ BinaryOp "*" <$ symbol1 '*', InfixL $ BinaryOp "/" <$ symbol1 '/'],
+        [InfixL $ BinaryOp "+" <$ symbol1 '+', InfixL $ BinaryOp "-" <$ symbol1 '-'],
+        [ InfixL $ BinaryOp "==" <$ symbol "==",
+          InfixL $ BinaryOp "!=" <$ symbol "!=",
+          InfixL $ BinaryOp "<=" <$ symbol "<=",
+          InfixL $ BinaryOp ">=" <$ symbol ">=",
+          InfixL $ BinaryOp "<" <$ symbol1 '<',
+          InfixL $ BinaryOp ">" <$ symbol1 '>'
+        ],
+        [InfixL $ BinaryOp "&&" <$ symbol "&&", InfixL $ BinaryOp "||" <$ symbol "||"]
       ]
 
 pExpr :: Parser Expr
