@@ -132,13 +132,17 @@ lookupVar name = do
 
 generateDef :: Expr -> ModuleBuilderT Codegen Operand
 generateDef (FuncDeclare name params retType body) = do
-  blocks <- generateBasicBlock body
   let args = map (Bifunctor.second toLLVMType) params
   let returnType = toLLVMType retType
   let funcType = T.FunctionType returnType (map snd args) False
   let fn = O.ConstantOperand $ C.GlobalReference (T.PointerType funcType (AddrSpace 0)) (Name (fromString name))
+
+  let paramOperands = map (\(paramName, paramType) -> (paramName, LocalReference (toLLVMType paramType) (Name (fromString paramName)))) params
+  modify $ \s -> s {symTable = paramOperands ++ symTable s}
+
+  blocks <- generateBasicBlock body
+
   emitDefn $ genFunction name args returnType blocks
-  modify $ \s -> s {symTable = (name, fn) : symTable s}
   pure fn
   where
     genFunction :: String -> [(String, T.Type)] -> T.Type -> [BasicBlock] -> Definition
