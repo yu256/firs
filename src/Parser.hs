@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Parser (parseProgram) where
+module Parser (parseProgram, Expr(..), Type) where
 
 import Control.Monad (void)
 import Control.Monad.Combinators.Expr
