@@ -137,6 +137,8 @@ generateDef (FuncDeclare name params retType body) = do
   let funcType = T.FunctionType returnType (map snd args) False
   let fn = O.ConstantOperand $ C.GlobalReference (T.PointerType funcType (AddrSpace 0)) (Name (fromString name))
 
+  modify $ \s -> s {symTable = (name, fn) : symTable s}
+
   let paramOperands = map (\(paramName, paramType) -> (paramName, LocalReference (toLLVMType paramType) (Name (fromString paramName)))) params
   modify $ \s -> s {symTable = paramOperands ++ symTable s}
 
