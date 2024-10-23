@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Parser (parseProgram, Expr(..), Type) where
+module Parser (parseProgram, Expr (..), Type) where
 
 import Control.Monad (void)
 import Control.Monad.Combinators.Expr
@@ -12,6 +12,7 @@ import qualified Text.Megaparsec.Char.Lexer as L
 data Expr
   = IntLit Integer
   | StringLit String
+  | BoolLit Bool
   | Var String
   | ValDeclare String Type Expr -- Value Name, Type Name, Value
   | VarDeclare String Type Expr -- Variable Name, Type Name, Value
@@ -54,6 +55,9 @@ pIntLit = IntLit <$> lexeme L.decimal
 
 pStringLit :: Parser Expr
 pStringLit = StringLit <$> lexeme (char '"' *> manyTill L.charLiteral (char '"'))
+
+pBoolLit :: Parser Expr
+pBoolLit = BoolLit <$> lexeme (True <$ symbol "true" <|> False <$ symbol "false")
 
 pArrayLit :: Parser Expr
 pArrayLit = ArrayLit <$> (symbol1 '[' *> pExpr `sepBy` symbol1 ',' <* symbol1 ']')
@@ -105,6 +109,10 @@ pExpr :: Parser Expr
 pExpr =
   choice
     [ pBlock,
+      pArrayLit,
+      pIntLit,
+      pStringLit,
+      pBoolLit,
       pIfExpr,
       try pValDeclare,
       try pVarDeclare,
@@ -112,9 +120,6 @@ pExpr =
       try pFuncDeclare,
       try pFuncCall,
       try pBinaryOp,
-      pArrayLit,
-      pIntLit,
-      pStringLit,
       pVar
     ]
 

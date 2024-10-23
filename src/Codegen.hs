@@ -39,10 +39,15 @@ initialCodegenState =
 toLLVMType :: Type -> T.Type
 toLLVMType ["Int"] = T.i32
 toLLVMType ["String"] = T.ptr T.i8
+toLLVMType ["Bool"] = T.i1
 toLLVMType _ = T.void
 
 codegenExpr :: Expr -> CodegenIRBuilder Operand
 codegenExpr (IntLit n) = pure $ O.ConstantOperand $ C.Int 32 n
+codegenExpr (StringLit str) =
+  ConstantOperand <$> globalStringPtr str (fromString $ "str." ++ str)
+codegenExpr (BoolLit bool) =
+  pure $ O.ConstantOperand $ C.Int 1 $ if bool then 1 else 0
 codegenExpr (Var name) = lift $ lift $ lookupVar name
 codegenExpr (ValDeclare name _type expr) = do
   val <- codegenExpr expr
@@ -75,10 +80,40 @@ codegenExpr (FuncCall (Var fn) args) = do
       emitInstr retType $ I.Call Nothing CC.C [] (Right funcOp) [(arg, []) | arg <- args'] [] []
     _ -> error $ "Calling non-function type: " ++ fn
 codegenExpr expr@FuncDeclare {} = lift $ generateDef expr
-codegenExpr (StringLit str) =
-  ConstantOperand <$> globalStringPtr str (fromString $ "str." ++ str)
 codegenExpr (Block exprs) =
   last <$> traverse codegenExpr exprs
+codegenExpr (IfExpr condExpr thenExpr mayBeElseExpr) = do
+  cond <- codegenExpr condExpr
+
+  thenBlock <- freshName "then"
+  mergeBlock <- freshName "merge"
+
+  case mayBeElseExpr of
+    Just elseExpr -> do
+      elseBlock <- freshName "else"
+
+      condBr cond thenBlock elseBlock
+
+      emitBlockStart thenBlock
+      thenVal <- codegenExpr thenExpr
+      br mergeBlock
+
+      emitBlockStart elseBlock
+      elseVal <- codegenExpr elseExpr
+      br mergeBlock
+
+      emitBlockStart mergeBlock
+
+      phi [(thenVal, thenBlock), (elseVal, elseBlock)]
+    Nothing -> do
+      condBr cond thenBlock mergeBlock
+
+      emitBlockStart thenBlock
+      _ <- codegenExpr thenExpr
+      br mergeBlock
+
+      emitBlockStart mergeBlock
+      pure $ O.ConstantOperand $ C.Undef T.void
 codegenExpr _ = error "Unsupported expression"
 
 generateBasicBlock :: Expr -> ModuleBuilderT Codegen [BasicBlock]
