@@ -72,13 +72,20 @@ codegenExpr (BinaryOp op lhs rhs) = do
     "<=" -> emitInstr T.i1 $ I.ICmp IP.SLE lhs' rhs' []
     ">=" -> emitInstr T.i1 $ I.ICmp IP.SGE lhs' rhs' []
     _ -> error $ "Unknown binary operator: " ++ op
-codegenExpr (FuncCall (Var fn) args) = do
+codegenExpr (FuncCall expr args) = do
+  funcOp <- case expr of
+    Var varName -> lift $ lift $ lookupVar varName
+    f@FuncDeclare {} -> codegenExpr f -- 即時関数
+    _ -> error "Calling non-function expression."
   args' <- traverse codegenExpr args
-  funcOp <- lift $ lift $ lookupVar fn
   case funcOp of
     O.ConstantOperand (C.GlobalReference (T.PointerType (T.FunctionType retType _ _) _) _) ->
       emitInstr retType $ I.Call Nothing CC.C [] (Right funcOp) [(arg, []) | arg <- args'] [] []
-    _ -> error $ "Calling non-function type: " ++ fn
+    _ ->
+      error $
+        "Calling non-function type: " ++ case expr of
+          Var name -> name
+          _ -> undefined -- unreachable
 codegenExpr expr@FuncDeclare {} = lift $ generateDef expr
 codegenExpr (Block exprs) =
   last <$> traverse codegenExpr exprs
@@ -114,7 +121,7 @@ codegenExpr (IfExpr condExpr thenExpr mayBeElseExpr) = do
 
       emitBlockStart mergeBlock
       pure $ O.ConstantOperand $ C.Undef T.void
-codegenExpr _ = error "Unsupported expression"
+codegenExpr e = error $ "Unsupported expression: " ++ show e
 
 generateBasicBlock :: Expr -> ModuleBuilderT Codegen [BasicBlock]
 generateBasicBlock body =
