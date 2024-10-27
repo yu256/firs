@@ -19,6 +19,7 @@ library
   exposed-modules:
       Codegen
       Parser
+      StdLib
   other-modules:
       Paths_firs
   hs-source-dirs:

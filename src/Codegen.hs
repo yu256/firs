@@ -17,23 +17,19 @@ import qualified LLVM.AST.IntegerPredicate as IP
 import qualified LLVM.AST.Operand as O
 import qualified LLVM.AST.Type as T
 import LLVM.IRBuilder
-import LLVM.Pretty
+import LLVM.Pretty (ppllvm)
 import Parser (Expr (..), Type)
+import StdLib (genPrelude)
 
 type Codegen = State CodegenState
 
 type CodegenIRBuilder = IRBuilderT (ModuleBuilderT Codegen)
 
-data CodegenState = CodegenState
-  { symTable :: [[(String, Operand)]],
-    _dummy :: ()
-  }
+newtype CodegenState = CodegenState {symTable :: [[(String, Operand)]]}
 
 initialCodegenState :: CodegenState
 initialCodegenState =
-  CodegenState
-    [[("printf", O.ConstantOperand $ C.GlobalReference (T.ptr (T.FunctionType T.i32 [T.ptr T.i8] True)) (Name "printf"))]]
-    ()
+  CodegenState []
 
 toLLVMType :: Type -> T.Type
 toLLVMType ["Int"] = T.i32
@@ -196,7 +192,7 @@ codegenProgram :: [Expr] -> Module
 codegenProgram exprs =
   evalState
     ( buildModuleT "program" $ do
-        _ <- externVarArgs "printf" [T.ptr T.i8] T.i32
+        genPrelude >>= put . CodegenState . pure
         traverse_ generateDef exprs
     )
     initialCodegenState
