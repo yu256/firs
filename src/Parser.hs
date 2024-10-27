@@ -93,7 +93,7 @@ pFuncDeclare = do
 
 pFuncCall :: Parser Expr
 pFuncCall = do
-  fn <- parens pExpr <|> pVar
+  fn <- pVar
   args <- parens $ pExpr `sepBy` symbol1 ','
   pure $ FuncCall fn args
 

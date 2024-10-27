@@ -67,20 +67,13 @@ codegenExpr (BinaryOp op lhs rhs) = do
     "<=" -> emitInstr T.i1 $ I.ICmp IP.SLE lhs' rhs' []
     ">=" -> emitInstr T.i1 $ I.ICmp IP.SGE lhs' rhs' []
     _ -> error $ "Unknown binary operator: " ++ op
-codegenExpr (FuncCall expr args) = do
-  funcOp <- case expr of
-    Var varName -> lift $ lift $ lookupVar varName
-    f@FuncDeclare {} -> codegenExpr f -- 即時関数
-    _ -> error "Calling non-function expression."
+codegenExpr (FuncCall (Var varName) args) = do
+  funcOp <- lift $ lift $ lookupVar varName
   args' <- traverse codegenExpr args
   case funcOp of
     O.ConstantOperand (C.GlobalReference (T.PointerType (T.FunctionType retType _ _) _) _) ->
       emitInstr retType $ I.Call Nothing CC.C [] (Right funcOp) [(arg, []) | arg <- args'] [] []
-    _ ->
-      error $
-        "Calling non-function type: " ++ case expr of
-          Var name -> name
-          _ -> undefined -- unreachable
+    _ -> error $ "Calling non-function type: " ++ varName
 codegenExpr expr@FuncDeclare {} = lift $ generateDef expr
 codegenExpr (Block exprs) = do
   lift $ lift pushScope
