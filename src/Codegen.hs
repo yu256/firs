@@ -52,6 +52,10 @@ codegenExpr (VarDeclare name _type expr) = do
   val <- codegenExpr expr
   lift $ lift $ addVar name val
   pure val
+codegenExpr (BinaryOp "|>" lhs rhs) =
+  case rhs of
+    FuncCall fn args -> codegenExpr $ FuncCall fn (lhs : args)
+    _ -> error $ "Invalid expression for |> operator: " ++ show rhs
 codegenExpr (BinaryOp op lhs rhs) = do
   lhs' <- codegenExpr lhs
   rhs' <- codegenExpr rhs

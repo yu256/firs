@@ -109,7 +109,8 @@ operatorTable =
       InfixL $ BinaryOp "<" <$ symbol1 '<',
       InfixL $ BinaryOp ">" <$ symbol1 '>'
     ],
-    [InfixL $ BinaryOp "&&" <$ symbol "&&", InfixL $ BinaryOp "||" <$ symbol "||"]
+    [InfixL $ BinaryOp "&&" <$ symbol "&&", InfixL $ BinaryOp "||" <$ symbol "||"],
+    [InfixL $ BinaryOp "|>" <$ symbol "|>"]
   ]
 
 pExpr :: Parser Expr
