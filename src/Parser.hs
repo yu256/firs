@@ -99,8 +99,7 @@ pFuncCall = do
 
 operatorTable :: [[Operator Parser Expr]]
 operatorTable =
-  [ [InfixR $ BinaryOp "^" <$ symbol1 '^'],
-    [InfixL $ BinaryOp "*" <$ symbol1 '*', InfixL $ BinaryOp "/" <$ symbol1 '/'],
+  [ [InfixL $ BinaryOp "*" <$ symbol1 '*', InfixL $ BinaryOp "/" <$ symbol1 '/'],
     [InfixL $ BinaryOp "+" <$ symbol1 '+', InfixL $ BinaryOp "-" <$ symbol1 '-'],
     [ InfixL $ BinaryOp "==" <$ symbol "==",
       InfixL $ BinaryOp "!=" <$ symbol "!=",

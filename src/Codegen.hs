@@ -70,6 +70,8 @@ codegenExpr (BinaryOp op lhs rhs) = do
     ">" -> emitInstr T.i1 $ I.ICmp IP.SGT lhs' rhs' []
     "<=" -> emitInstr T.i1 $ I.ICmp IP.SLE lhs' rhs' []
     ">=" -> emitInstr T.i1 $ I.ICmp IP.SGE lhs' rhs' []
+    "&&" -> emitInstr T.i1 $ I.And lhs' rhs' []
+    "||" -> emitInstr T.i1 $ I.Or lhs' rhs' []
     _ -> error $ "Unknown binary operator: " ++ op
 codegenExpr (FuncCall (Var varName) args) = do
   funcOp <- lift $ lift $ lookupVar varName
