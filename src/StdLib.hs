@@ -14,6 +14,8 @@ genPrelude :: Monad a => ModuleBuilderT a [(String, Operand)]
 genPrelude = do
   printf <- externVarArgs "printf" [T.ptr T.i8] T.i32
   scanf <- externVarArgs "scanf" [T.ptr T.i8] T.i32
+  sprintf <- externVarArgs "sprintf" [T.ptr T.i8, T.ptr T.i8, T.i32] T.i32
+  int <- extern "atoi" [T.ptr T.i8] T.i32
 
   putStr <- function "putStr" [(T.ptr T.i8, "str")] T.i32 $ \[str] -> do
     _ <- call printf [(str, [])]
@@ -39,11 +41,20 @@ genPrelude = do
       _ <- call scanf [(ConstantOperand formatStr, []), (buffer, [])]
       ret buffer
 
+  string <- function "string" [(T.i32, "val")] (T.ptr T.i8) $ \[val] -> do
+    buffer <- alloca (T.ptr T.i8) Nothing 0
+    formatStr <- globalStringPtr "%d" "formatStrToString"
+    _ <- call sprintf [(buffer, []), (ConstantOperand formatStr, []), (val, [])]
+    ret buffer
+
   pure
     [ ("printf", printf),
       ("scanf", scanf),
+      ("sprintf", sprintf),
       ("putStr", putStr),
       ("putStrLn", putStrLn),
       ("readLn", readLn),
-      ("getLine", getLine)
+      ("getLine", getLine),
+      ("int", int),
+      ("string", string)
     ]
