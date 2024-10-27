@@ -25,15 +25,14 @@ type Codegen = State CodegenState
 type CodegenIRBuilder = IRBuilderT (ModuleBuilderT Codegen)
 
 data CodegenState = CodegenState
-  { symTable :: [(String, Operand)],
+  { symTable :: [[(String, Operand)]],
     _dummy :: ()
   }
 
 initialCodegenState :: CodegenState
 initialCodegenState =
   CodegenState
-    [ ("printf", O.ConstantOperand $ C.GlobalReference (T.ptr (T.FunctionType T.i32 [T.ptr T.i8] True)) (Name "printf"))
-    ]
+    [[("printf", O.ConstantOperand $ C.GlobalReference (T.ptr (T.FunctionType T.i32 [T.ptr T.i8] True)) (Name "printf"))]]
     ()
 
 toLLVMType :: Type -> T.Type
@@ -51,11 +50,11 @@ codegenExpr (BoolLit bool) =
 codegenExpr (Var name) = lift $ lift $ lookupVar name
 codegenExpr (ValDeclare name _type expr) = do
   val <- codegenExpr expr
-  modify $ \s -> s {symTable = (name, val) : symTable s}
+  lift $ lift $ addVar name val
   pure val
 codegenExpr (VarDeclare name _type expr) = do
   val <- codegenExpr expr
-  modify $ \s -> s {symTable = (name, val) : symTable s}
+  lift $ lift $ addVar name val
   pure val
 codegenExpr (BinaryOp op lhs rhs) = do
   lhs' <- codegenExpr lhs
@@ -87,8 +86,11 @@ codegenExpr (FuncCall expr args) = do
           Var name -> name
           _ -> undefined -- unreachable
 codegenExpr expr@FuncDeclare {} = lift $ generateDef expr
-codegenExpr (Block exprs) =
-  last <$> traverse codegenExpr exprs
+codegenExpr (Block exprs) = do
+  lift $ lift pushScope
+  result <- last <$> traverse codegenExpr exprs
+  lift $ lift popScope
+  pure result
 codegenExpr (IfExpr condExpr thenExpr mayBeElseExpr) = do
   cond <- codegenExpr condExpr
 
@@ -132,10 +134,30 @@ generateBasicBlock body =
 
 lookupVar :: String -> Codegen Operand
 lookupVar name = do
-  symTbl <- gets symTable
-  case lookup name symTbl of
+  symTblStack <- gets symTable
+  case lookupInScopes name symTblStack of
     Just op -> pure op
     Nothing -> error $ "Unknown variable: " ++ name
+  where
+    lookupInScopes :: String -> [[(String, Operand)]] -> Maybe Operand
+    lookupInScopes _ [] = Nothing
+    lookupInScopes name_ (scope : rest) =
+      case lookup name_ scope of
+        Just op -> Just op
+        Nothing -> lookupInScopes name rest
+
+pushScope :: Codegen ()
+pushScope = modify $ \s -> s {symTable = [] : symTable s}
+
+popScope :: Codegen ()
+popScope = modify $ \s -> s {symTable = tail $ symTable s}
+
+-- 現在のスコープにOperandを追加する
+addVar :: String -> Operand -> Codegen ()
+addVar name op = modify $ \s ->
+  case symTable s of
+    currentScope : rest -> s {symTable = ((name, op) : currentScope) : rest}
+    [] -> s
 
 generateDef :: Expr -> ModuleBuilderT Codegen Operand
 generateDef (FuncDeclare name params retType body) = do
@@ -144,14 +166,18 @@ generateDef (FuncDeclare name params retType body) = do
   let funcType = T.FunctionType returnType (map snd args) False
   let fn = O.ConstantOperand $ C.GlobalReference (T.PointerType funcType (AddrSpace 0)) (Name (fromString name))
 
-  modify $ \s -> s {symTable = (name, fn) : symTable s}
+  lift $ addVar name fn
+
+  -- lift pushScope 下の処理で同時にScopeをpushしている
 
   let paramOperands = map (\(paramName, paramType) -> (paramName, LocalReference (toLLVMType paramType) (Name (fromString paramName)))) params
-  modify $ \s -> s {symTable = paramOperands ++ symTable s}
+  modify $ \s -> s {symTable = paramOperands : symTable s}
 
   blocks <- generateBasicBlock body
 
   emitDefn $ genFunction name args returnType blocks
+
+  lift popScope
   pure fn
   where
     genFunction :: String -> [(String, T.Type)] -> T.Type -> [BasicBlock] -> Definition
