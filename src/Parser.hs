@@ -90,29 +90,27 @@ pFuncDeclare = do
     typeAnnotation = fromList <$> (symbol1 ':' *> some identifier)
     pArgs = (,) <$> identifier <*> typeAnnotation
 
-pFuncCall :: Parser Expr
-pFuncCall = do
-  fn <- pVar
-  args <- parens $ pExpr `sepBy` symbol1 ','
-  pure $ FuncCall fn args
-
-operatorTable :: [[Operator Parser Expr]]
-operatorTable =
-  [ [InfixL $ BinaryOp "*" <$ symbol1 '*', InfixL $ BinaryOp "/" <$ symbol1 '/'],
-    [InfixL $ BinaryOp "+" <$ symbol1 '+', InfixL $ BinaryOp "-" <$ symbol1 '-'],
-    [ InfixL $ BinaryOp "==" <$ symbol "==",
-      InfixL $ BinaryOp "!=" <$ symbol "!=",
-      InfixL $ BinaryOp "<=" <$ symbol "<=",
-      InfixL $ BinaryOp ">=" <$ symbol ">=",
-      InfixL $ BinaryOp "<" <$ symbol1 '<',
-      InfixL $ BinaryOp ">" <$ symbol1 '>'
-    ],
-    [InfixL $ BinaryOp "&&" <$ symbol "&&", InfixL $ BinaryOp "||" <$ symbol "||"],
-    [InfixL $ BinaryOp "|>" <$ symbol "|>"]
-  ]
-
 pExpr :: Parser Expr
 pExpr = makeExprParser pTerm operatorTable
+  where
+    pFuncCallArgs :: Parser (Expr -> Expr)
+    pFuncCallArgs = flip FuncCall <$> parens (pExpr `sepBy` symbol1 ',')
+
+    operatorTable :: [[Operator Parser Expr]]
+    operatorTable =
+      [ [Postfix pFuncCallArgs],
+        [InfixL $ BinaryOp "*" <$ symbol1 '*', InfixL $ BinaryOp "/" <$ symbol1 '/'],
+        [InfixL $ BinaryOp "+" <$ symbol1 '+', InfixL $ BinaryOp "-" <$ symbol1 '-'],
+        [ InfixL $ BinaryOp "==" <$ symbol "==",
+          InfixL $ BinaryOp "!=" <$ symbol "!=",
+          InfixL $ BinaryOp "<=" <$ symbol "<=",
+          InfixL $ BinaryOp ">=" <$ symbol ">=",
+          InfixL $ BinaryOp "<" <$ symbol1 '<',
+          InfixL $ BinaryOp ">" <$ symbol1 '>'
+        ],
+        [InfixL $ BinaryOp "&&" <$ symbol "&&", InfixL $ BinaryOp "||" <$ symbol "||"],
+        [InfixL $ BinaryOp "|>" <$ symbol "|>"]
+      ]
 
 pTerm :: Parser Expr
 pTerm =
@@ -127,7 +125,6 @@ pTerm =
       try pVarDeclare,
       try pAssign,
       try pFuncDeclare,
-      try pFuncCall,
       pVar
     ]
 
