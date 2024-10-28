@@ -4,6 +4,7 @@ module Parser (parseProgram, Expr (..), Type) where
 
 import Control.Monad (void)
 import Control.Monad.Combinators.Expr
+import Data.List.NonEmpty (NonEmpty, fromList)
 import Data.Void (Void)
 import Text.Megaparsec
 import Text.Megaparsec.Char
@@ -18,14 +19,14 @@ data Expr
   | BinaryOp String Expr Expr
   | IfExpr Expr Expr (Maybe Expr)
   | FuncCall Expr [Expr]
-  | Block [Expr]
+  | Block (NonEmpty Expr)
   | Bind String Expr
   | VarDeclare String Expr
   | Assign String Expr
   | FuncDeclare String [(String, Type)] Type Expr -- Function Name, [(ArgName, Type)], ReturnType, Body
   deriving (Show, Eq)
 
-type Type = [String] -- ensure nonEmpty
+type Type = NonEmpty String -- ensure nonEmpty
 
 type Parser = Parsec Void String
 
@@ -46,9 +47,6 @@ parens = between (symbol1 '(') (symbol1 ')')
 
 identifier :: Parser String
 identifier = lexeme $ (:) <$> letterChar <*> many alphaNumChar
-
-typeAnnotation :: Parser Type
-typeAnnotation = symbol1 ':' *> some identifier
 
 pIntLit :: Parser Expr
 pIntLit = IntLit <$> lexeme L.decimal
@@ -89,6 +87,7 @@ pFuncDeclare = do
   symbol1 '='
   FuncDeclare funcName argAndTypes returnType <$> pExpr
   where
+    typeAnnotation = fromList <$> (symbol1 ':' *> some identifier)
     pArgs = (,) <$> identifier <*> typeAnnotation
 
 pFuncCall :: Parser Expr
@@ -136,7 +135,7 @@ exprSeparator :: Parser ()
 exprSeparator = symbol1 ';'
 
 pBlock :: Parser Expr
-pBlock = Block <$> (symbol1 '{' *> pExpr `sepEndBy` exprSeparator <* symbol1 '}')
+pBlock = Block . fromList <$> (symbol1 '{' *> pExpr `sepEndBy1` exprSeparator <* symbol1 '}')
 
 pProgram :: Parser [Expr]
 pProgram = pExpr `sepEndBy` exprSeparator

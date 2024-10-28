@@ -5,7 +5,9 @@ module Codegen (printLLVM) where
 import Control.Monad.State
 import qualified Data.Bifunctor as Bifunctor
 import Data.Foldable (traverse_)
-import Data.String
+import Data.List.NonEmpty (NonEmpty ((:|)))
+import qualified Data.List.NonEmpty as NE
+import Data.String ( IsString(fromString) )
 import Data.Text.Lazy (Text)
 import LLVM.AST hiding (Type, args, function)
 import LLVM.AST.AddrSpace (AddrSpace (AddrSpace))
@@ -32,9 +34,9 @@ initialCodegenState =
   CodegenState []
 
 toLLVMType :: Type -> T.Type
-toLLVMType ["Int"] = T.i32
-toLLVMType ["String"] = T.ptr T.i8
-toLLVMType ["Bool"] = T.i1
+toLLVMType ("Int" :| []) = T.i32
+toLLVMType ("String" :| []) = T.ptr T.i8
+toLLVMType ("Bool" :| []) = T.i1
 toLLVMType _ = T.void
 
 codegenExpr :: Expr -> CodegenIRBuilder Operand
@@ -84,7 +86,7 @@ codegenExpr (FuncCall (Var varName) args) = do
 codegenExpr expr@FuncDeclare {} = lift $ generateDef expr
 codegenExpr (Block exprs) = do
   lift $ lift pushScope
-  result <- last <$> traverse codegenExpr exprs
+  result <- NE.last <$> traverse codegenExpr exprs
   lift $ lift popScope
   pure result
 codegenExpr (IfExpr condExpr thenExpr mayBeElseExpr) = do
