@@ -138,7 +138,7 @@ pBlock :: Parser Expr
 pBlock = Block . fromList <$> (symbol1 '{' *> pExpr `sepEndBy1` exprSeparator <* symbol1 '}')
 
 pProgram :: Parser [Expr]
-pProgram = pExpr `sepEndBy` exprSeparator
+pProgram = sc *> pExpr `sepEndBy` exprSeparator
 
 parseProgram :: String -> Either (ParseErrorBundle String Void) [Expr]
 parseProgram = parse pProgram ""
