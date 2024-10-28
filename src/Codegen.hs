@@ -44,11 +44,11 @@ codegenExpr (StringLit str) =
 codegenExpr (BoolLit bool) =
   pure $ O.ConstantOperand $ C.Int 1 $ if bool then 1 else 0
 codegenExpr (Var name) = lift $ lift $ lookupVar name
-codegenExpr (ValDeclare name _type expr) = do
+codegenExpr (Bind name expr) = do
   val <- codegenExpr expr
   lift $ lift $ addVar name val
   pure val
-codegenExpr (VarDeclare name _type expr) = do
+codegenExpr (VarDeclare name expr) = do
   val <- codegenExpr expr
   lift $ lift $ addVar name val
   pure val

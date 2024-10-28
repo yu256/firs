@@ -10,19 +10,19 @@ import Text.Megaparsec.Char
 import qualified Text.Megaparsec.Char.Lexer as L
 
 data Expr
-  = IntLit Integer
+  = Var String
+  | IntLit Integer
   | StringLit String
   | BoolLit Bool
-  | Var String
-  | ValDeclare String Type Expr -- Value Name, Type Name, Value
-  | VarDeclare String Type Expr -- Variable Name, Type Name, Value
-  | Assign String Expr
-  | BinaryOp String Expr Expr
   | ArrayLit [Expr]
+  | BinaryOp String Expr Expr
   | IfExpr Expr Expr (Maybe Expr)
-  | FuncDeclare String [(String, Type)] Type Expr -- Function Name, [(ArgName, Type)], ReturnType, Body
   | FuncCall Expr [Expr]
   | Block [Expr]
+  | Bind String Expr
+  | VarDeclare String Expr
+  | Assign String Expr
+  | FuncDeclare String [(String, Type)] Type Expr -- Function Name, [(ArgName, Type)], ReturnType, Body
   deriving (Show, Eq)
 
 type Type = [String] -- ensure nonEmpty
@@ -65,11 +65,11 @@ pArrayLit = ArrayLit <$> (symbol1 '[' *> pExpr `sepBy` symbol1 ',' <* symbol1 ']
 pVar :: Parser Expr
 pVar = Var <$> identifier
 
-pValDeclare :: Parser Expr
-pValDeclare = ValDeclare <$> identifier <*> typeAnnotation <* symbol1 '=' <*> pExpr
+pBind :: Parser Expr
+pBind = Bind <$> identifier <* symbol1 '=' <*> pExpr
 
 pVarDeclare :: Parser Expr
-pVarDeclare = VarDeclare <$> identifier <*> typeAnnotation <* symbol ":=" <*> pExpr
+pVarDeclare = VarDeclare <$> identifier <* symbol ":=" <*> pExpr
 
 pAssign :: Parser Expr
 pAssign = Assign <$> identifier <* symbol "<-" <*> pExpr
@@ -124,7 +124,7 @@ pTerm =
       pStringLit,
       pBoolLit,
       pIfExpr,
-      try pValDeclare,
+      try pBind,
       try pVarDeclare,
       try pAssign,
       try pFuncDeclare,
