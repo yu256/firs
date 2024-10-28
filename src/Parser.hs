@@ -117,7 +117,8 @@ pExpr = makeExprParser pTerm operatorTable
 pTerm :: Parser Expr
 pTerm =
   choice
-    [ pBlock,
+    [ parens pExpr, -- 括弧で囲まれた式を最優先で扱う
+      pBlock,
       pArrayLit,
       pIntLit,
       pStringLit,
