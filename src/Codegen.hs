@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module Codegen (printLLVM) where
@@ -5,7 +6,6 @@ module Codegen (printLLVM) where
 import Control.Monad.State
 import qualified Data.Bifunctor as Bifunctor
 import Data.Foldable (traverse_)
-import Data.List.NonEmpty (NonEmpty ((:|)))
 import qualified Data.List.NonEmpty as NE
 import Data.String (IsString (fromString))
 import Data.Text.Lazy (Text)
@@ -13,6 +13,7 @@ import LLVM.AST hiding (Type, args, function)
 import LLVM.AST.AddrSpace (AddrSpace (AddrSpace))
 import qualified LLVM.AST.CallingConvention as CC
 import qualified LLVM.AST.Constant as C
+import qualified LLVM.AST.Float as F
 import qualified LLVM.AST.Global as G
 import qualified LLVM.AST.Instruction as I
 import qualified LLVM.AST.IntegerPredicate as IP
@@ -20,7 +21,7 @@ import qualified LLVM.AST.Operand as O
 import qualified LLVM.AST.Type as T
 import LLVM.IRBuilder
 import LLVM.Pretty (ppllvm)
-import Parser (Expr (..), Type)
+import Parser (Expr (..), NumLit (..), Type)
 import StdLib (genPrelude)
 
 type Codegen = State CodegenState
@@ -34,13 +35,23 @@ initialCodegenState =
   CodegenState []
 
 toLLVMType :: Type -> T.Type
-toLLVMType ("Int" :| []) = T.i32
-toLLVMType ("String" :| []) = T.ptr T.i8
-toLLVMType ("Bool" :| []) = T.i1
-toLLVMType _ = T.void
+toLLVMType ["Int"] = T.i32
+toLLVMType ["Long"] = T.i64
+toLLVMType ["Float"] = T.float
+toLLVMType ["Double"] = T.double
+toLLVMType ["Char"] = T.i8
+toLLVMType ["String"] = T.ptr T.i8
+toLLVMType ["Bool"] = T.i1
+toLLVMType invalid = error $ "Invalid Type: " ++ show (NE.intersperse " " invalid)
 
 codegenExpr :: Expr -> CodegenIRBuilder Operand
-codegenExpr (IntLit n) = pure $ O.ConstantOperand $ C.Int 32 n
+codegenExpr (NumLit lit) =
+  pure . O.ConstantOperand $ case lit of
+    IntLit n -> C.Int 32 n
+    LongLit n -> C.Int 64 n
+    FloatLit n -> C.Float $ F.Single n
+    DoubleLit n -> C.Float $ F.Double n
+codegenExpr (CharLit c) = pure $ O.ConstantOperand $ C.Int 8 $ fromIntegral $ fromEnum c
 codegenExpr (StringLit str) =
   ConstantOperand <$> globalStringPtr str (fromString $ "str." ++ str)
 codegenExpr (BoolLit bool) =
@@ -167,13 +178,13 @@ generateDef (FuncDeclare name params retType body) = do
   let args = map (Bifunctor.second toLLVMType) params
   let returnType = toLLVMType retType
   let funcType = T.FunctionType returnType (map snd args) False
-  let fn = O.ConstantOperand $ C.GlobalReference (T.PointerType funcType (AddrSpace 0)) (Name (fromString name))
+  let fn = O.ConstantOperand $ C.GlobalReference (T.PointerType funcType (AddrSpace 0)) (fromString name)
 
   lift $ addVar name fn
 
   -- lift pushScope 下の処理で同時にScopeをpushしている
 
-  let paramOperands = map (\(paramName, paramType) -> (paramName, LocalReference (toLLVMType paramType) (Name (fromString paramName)))) params
+  let paramOperands = map (\(paramName, paramType) -> (paramName, LocalReference (toLLVMType paramType) (fromString paramName))) params
   modify $ \s -> s {symTable = paramOperands : symTable s}
 
   blocks <- generateBasicBlock body
@@ -185,7 +196,7 @@ generateDef (FuncDeclare name params retType body) = do
   where
     genFunction :: String -> [(String, T.Type)] -> T.Type -> [BasicBlock] -> Definition
     genFunction name_ args retType_ body_ =
-      let parameters = map (\(n, ty) -> G.Parameter ty (Name (fromString n)) []) args
+      let parameters = map (\(n, ty) -> G.Parameter ty (fromString n) []) args
        in GlobalDefinition
             G.functionDefaults
               { G.name = fromString name_,

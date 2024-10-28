@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Parser (parseProgram, Expr (..), Type) where
+module Parser (parseProgram, Expr (..), NumLit (..), Type) where
 
 import Control.Monad (void)
 import Control.Monad.Combinators.Expr
@@ -12,7 +12,8 @@ import qualified Text.Megaparsec.Char.Lexer as L
 
 data Expr
   = Var String
-  | IntLit Integer
+  | NumLit NumLit
+  | CharLit Char
   | StringLit String
   | BoolLit Bool
   | ArrayLit [Expr]
@@ -25,6 +26,13 @@ data Expr
   | VarDeclare String Expr
   | Assign String Expr
   | FuncDeclare String [(String, Type)] Type Expr -- Function Name, [(ArgName, Type)], ReturnType, Body
+  deriving (Show, Eq)
+
+data NumLit
+  = IntLit Integer
+  | LongLit Integer
+  | FloatLit Float
+  | DoubleLit Double
   deriving (Show, Eq)
 
 type Type = NonEmpty String -- ensure nonEmpty
@@ -49,8 +57,23 @@ parens = between (symbol1 '(') (symbol1 ')')
 identifier :: Parser String
 identifier = lexeme $ (:) <$> letterChar <*> many alphaNumChar
 
-pIntLit :: Parser Expr
-pIntLit = IntLit <$> lexeme L.decimal
+pNumLit :: Parser Expr
+pNumLit =
+  NumLit
+    <$> choice
+      [ try $ FloatLit <$> lexeme ((try L.float <|> L.decimal) <* (char 'f' <|> char 'F')),
+        try $
+          DoubleLit
+            <$> lexeme
+              ( try L.float <* optional (char 'd' <|> char 'D')
+                  <|> L.decimal <* (char 'd' <|> char 'D')
+              ),
+        try $ LongLit <$> lexeme (L.decimal <* (char 'l' <|> char 'L')),
+        IntLit <$> lexeme L.decimal
+      ]
+
+pCharLit :: Parser Expr
+pCharLit = CharLit <$> lexeme (char '\'' *> L.charLiteral <* char '\'')
 
 pStringLit :: Parser Expr
 pStringLit = StringLit <$> lexeme (char '"' *> manyTill L.charLiteral (char '"'))
@@ -120,7 +143,8 @@ pTerm =
     [ parens pExpr, -- 括弧で囲まれた式を最優先で扱う
       pBlock,
       pArrayLit,
-      pIntLit,
+      pNumLit,
+      pCharLit,
       pStringLit,
       pBoolLit,
       pIfExpr,
