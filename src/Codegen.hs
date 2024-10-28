@@ -7,7 +7,7 @@ import qualified Data.Bifunctor as Bifunctor
 import Data.Foldable (traverse_)
 import Data.List.NonEmpty (NonEmpty ((:|)))
 import qualified Data.List.NonEmpty as NE
-import Data.String ( IsString(fromString) )
+import Data.String (IsString (fromString))
 import Data.Text.Lazy (Text)
 import LLVM.AST hiding (Type, args, function)
 import LLVM.AST.AddrSpace (AddrSpace (AddrSpace))
@@ -54,6 +54,11 @@ codegenExpr (VarDeclare name expr) = do
   val <- codegenExpr expr
   lift $ lift $ addVar name val
   pure val
+codegenExpr (UnaryOp op hs) = do
+  hs' <- codegenExpr hs
+  case op of
+    "!" -> emitInstr T.i1 $ I.Xor hs' (ConstantOperand $ C.Int 1 1) []
+    _ -> error $ "Unknown unary operator: " ++ op
 codegenExpr (BinaryOp "|>" lhs rhs) =
   case rhs of
     FuncCall fn args -> codegenExpr $ FuncCall fn (lhs : args)

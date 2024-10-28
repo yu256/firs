@@ -16,6 +16,7 @@ data Expr
   | StringLit String
   | BoolLit Bool
   | ArrayLit [Expr]
+  | UnaryOp String Expr
   | BinaryOp String Expr Expr
   | IfExpr Expr Expr (Maybe Expr)
   | FuncCall Expr [Expr]
@@ -99,6 +100,7 @@ pExpr = makeExprParser pTerm operatorTable
     operatorTable :: [[Operator Parser Expr]]
     operatorTable =
       [ [Postfix pFuncCallArgs],
+        [Prefix $ UnaryOp "!" <$ symbol1 '!'],
         [InfixL $ BinaryOp "*" <$ symbol1 '*', InfixL $ BinaryOp "/" <$ symbol1 '/'],
         [InfixL $ BinaryOp "+" <$ symbol1 '+', InfixL $ BinaryOp "-" <$ symbol1 '-'],
         [ InfixL $ BinaryOp "==" <$ symbol "==",
