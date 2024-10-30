@@ -7,6 +7,7 @@ import Control.Monad.State
 import qualified Data.Bifunctor as Bifunctor
 import Data.Foldable (traverse_)
 import qualified Data.List.NonEmpty as NE
+import qualified Data.Map as Map
 import Data.String (IsString (fromString))
 import Data.Text.Lazy (Text)
 import LLVM.AST hiding (Type, args, function)
@@ -28,11 +29,14 @@ type Codegen = State CodegenState
 
 type CodegenIRBuilder = IRBuilderT (ModuleBuilderT Codegen)
 
-newtype CodegenState = CodegenState {symTable :: [[(String, Operand)]]}
+data CodegenState = CodegenState
+  { symTable :: [[(String, Operand)]],
+    strCache :: Map.Map String Operand
+  }
 
 initialCodegenState :: CodegenState
 initialCodegenState =
-  CodegenState []
+  CodegenState [] Map.empty
 
 toLLVMType :: Type -> T.Type
 toLLVMType ["Int"] = T.i32
@@ -52,8 +56,14 @@ codegenExpr (NumLit lit) =
     FloatLit n -> C.Float $ F.Single n
     DoubleLit n -> C.Float $ F.Double n
 codegenExpr (CharLit c) = pure $ O.ConstantOperand $ C.Int 8 $ fromIntegral $ fromEnum c
-codegenExpr (StringLit str) =
-  ConstantOperand <$> globalStringPtr str (fromString $ "str." ++ str)
+codegenExpr (StringLit str) = do
+  cache <- gets strCache -- 再定義しないようキャッシュする
+  case Map.lookup str cache of
+    Just op -> pure op
+    Nothing -> do
+      op <- O.ConstantOperand <$> globalStringPtr str (fromString $ "str." ++ str)
+      modify $ \s -> s {strCache = Map.insert str op (strCache s)}
+      pure op
 codegenExpr (BoolLit bool) =
   pure $ O.ConstantOperand $ C.Int 1 $ if bool then 1 else 0
 codegenExpr (Var name) = lift $ lift $ lookupVar name
@@ -215,7 +225,7 @@ codegenProgram :: [Expr] -> Module
 codegenProgram exprs =
   evalState
     ( buildModuleT "program" $ do
-        genPrelude >>= put . CodegenState . pure
+        genPrelude >>= put . flip CodegenState Map.empty . pure
         traverse_ generateDef exprs
     )
     initialCodegenState

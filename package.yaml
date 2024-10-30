@@ -21,6 +21,7 @@ dependencies:
 - parser-combinators
 - mtl
 - bytestring
+- containers
 
 ghc-options:
 - -Wall
