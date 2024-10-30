@@ -28,6 +28,8 @@ data Expr
   | VarDeclare String Type Expr
   | Assign String Expr
   | FuncDeclare String [(String, Type)] Type Expr -- Function Name, [(ArgName, Type)], ReturnType, Body
+  | Loop (NonEmpty Expr)
+  | Break (Maybe Expr) Expr -- Loop式の返す値, Condition
   deriving (Show, Eq)
 
 data NumLit
@@ -105,6 +107,19 @@ pVarDeclare = VarDeclare <$> identifier <*> typeAnnotation <* symbol ":=" <*> pE
 pAssign :: Parser Expr
 pAssign = Assign <$> identifier <* symbol "<-" <*> pExpr
 
+pLoop :: Parser Expr
+pLoop = do
+  symbol "loop"
+  Block exprs <- pBlock
+  pure $ Loop exprs
+
+pBreak :: Parser Expr
+pBreak = do
+  symbol "break"
+  maybeExpr <- optional pExpr
+  symbol "when"
+  Break maybeExpr <$> pExpr
+
 pIfExpr :: Parser Expr
 pIfExpr = do
   cond <- symbol "if" *> pExpr <* symbol "then"
@@ -162,6 +177,8 @@ pTerm =
       try pVarDeclare,
       try pAssign,
       try pFuncDeclare,
+      pLoop,
+      pBreak,
       pVar
     ]
 
