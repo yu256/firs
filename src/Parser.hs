@@ -1,10 +1,12 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TupleSections #-}
 
 module Parser (parseProgram, Expr (..), NumLit (..), Type) where
 
 import Control.Monad (void)
 import Control.Monad.Combinators.Expr
 import Data.List.NonEmpty (NonEmpty, fromList)
+import Data.Maybe (fromMaybe)
 import Data.Void (Void)
 import Text.Megaparsec
 import Text.Megaparsec.Char
@@ -38,6 +40,10 @@ data NumLit
 type Type = NonEmpty String
 
 type Parser = Parsec Void String
+
+type Externs = [String]
+
+type Program = (Externs, [Expr])
 
 sc :: Parser ()
 sc = L.space space1 (L.skipLineComment "//") (L.skipBlockComment "/*" "*/")
@@ -162,8 +168,13 @@ exprSeparator = symbol1 ';'
 pBlock :: Parser Expr
 pBlock = Block . fromList <$> (symbol1 '{' *> pExpr `sepEndBy1` exprSeparator <* symbol1 '}')
 
-pProgram :: Parser [Expr]
-pProgram = sc *> pExpr `sepEndBy` exprSeparator
+pProgram :: Parser Program
+pProgram = do
+  sc
+  externs <- fromMaybe [] <$> optional pExterns
+  (externs,) <$> pExpr `sepEndBy` exprSeparator
+  where
+    pExterns = symbol "extern" *> parens (identifier `sepBy` symbol1 ',')
 
-parseProgram :: String -> Either (ParseErrorBundle String Void) [Expr]
+parseProgram :: String -> Either (ParseErrorBundle String Void) Program
 parseProgram = parse pProgram ""

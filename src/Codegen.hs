@@ -23,7 +23,7 @@ import qualified LLVM.AST.Type as T
 import LLVM.IRBuilder
 import LLVM.Pretty (ppllvm)
 import Parser (Expr (..), NumLit (..), Type)
-import StdLib (genPrelude)
+import StdLib (externCFunc)
 
 type Codegen = State CodegenState
 
@@ -221,14 +221,17 @@ generateDef (FuncDeclare name params retType body) = do
               }
 generateDef _ = error "Only functions can be declared at the top level."
 
-codegenProgram :: [Expr] -> Module
-codegenProgram exprs =
+codegenProgram :: [String] -> [Expr] -> Module
+codegenProgram externs exprs =
   evalState
     ( buildModuleT "program" $ do
-        genPrelude >>= put . flip CodegenState Map.empty . pure
+        opsE <- externCFunc externs
+        case opsE of
+          Right ops -> put $ CodegenState [ops] Map.empty
+          Left l -> error l
         traverse_ generateDef exprs
     )
     initialCodegenState
 
-printLLVM :: [Expr] -> Text
-printLLVM = ppllvm . codegenProgram
+printLLVM :: [String] -> [Expr] -> Text
+printLLVM externs = ppllvm . codegenProgram externs
