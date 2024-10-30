@@ -130,6 +130,7 @@ pExpr = makeExprParser pTerm operatorTable
     operatorTable =
       [ [Postfix pFuncCallArgs],
         [Prefix $ UnaryOp "!" <$ symbol1 '!'],
+        [Prefix $ UnaryOp "deref" <$ symbol1 '*'],
         [InfixL $ BinaryOp "*" <$ symbol1 '*', InfixL $ BinaryOp "/" <$ symbol1 '/'],
         [InfixL $ BinaryOp "+" <$ symbol1 '+', InfixL $ BinaryOp "-" <$ symbol1 '-'],
         [ InfixL $ BinaryOp "==" <$ symbol "==",

@@ -6,6 +6,7 @@ module Codegen (printLLVM) where
 import Control.Monad.State
 import qualified Data.Bifunctor as Bifunctor
 import Data.Foldable (traverse_)
+import Data.List.NonEmpty (NonEmpty ((:|)))
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map as Map
 import Data.String (IsString (fromString))
@@ -20,6 +21,7 @@ import qualified LLVM.AST.Instruction as I
 import qualified LLVM.AST.IntegerPredicate as IP
 import qualified LLVM.AST.Operand as O
 import qualified LLVM.AST.Type as T
+import LLVM.AST.Typed (typeOf)
 import LLVM.IRBuilder
 import LLVM.Pretty (ppllvm)
 import Parser (Expr (..), NumLit (..), Type)
@@ -46,6 +48,8 @@ toLLVMType ["Double"] = T.double
 toLLVMType ["Char"] = T.i8
 toLLVMType ["String"] = T.ptr T.i8
 toLLVMType ["Bool"] = T.i1
+toLLVMType ("Ptr" :| []) = error "Kind of Pointer type is (* -> *)."
+toLLVMType ("Ptr" :| t : rest) = T.ptr . toLLVMType $ t :| rest
 toLLVMType invalid = error $ "Invalid Type: " ++ show (NE.intersperse " " invalid)
 
 codegenExpr :: Expr -> CodegenIRBuilder Operand
@@ -79,6 +83,9 @@ codegenExpr (UnaryOp op hs) = do
   hs' <- codegenExpr hs
   case op of
     "!" -> emitInstr T.i1 $ I.Xor hs' (ConstantOperand $ C.Int 1 1) []
+    "deref" -> case typeOf hs' of
+      PointerType t _ -> emitInstr t $ I.Load False hs' Nothing 0 []
+      t -> error $ show t ++ "cannot be dereferenced."
     _ -> error $ "Unknown unary operator: " ++ op
 codegenExpr (BinaryOp "|>" lhs rhs) =
   case rhs of
