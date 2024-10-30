@@ -35,7 +35,7 @@ data NumLit
   | DoubleLit Double
   deriving (Show, Eq)
 
-type Type = NonEmpty String -- ensure nonEmpty
+type Type = NonEmpty String
 
 type Parser = Parsec Void String
 
@@ -134,7 +134,8 @@ pExpr = makeExprParser pTerm operatorTable
           InfixL $ BinaryOp ">" <$ symbol1 '>'
         ],
         [InfixL $ BinaryOp "&&" <$ symbol "&&", InfixL $ BinaryOp "||" <$ symbol "||"],
-        [InfixL $ BinaryOp "|>" <$ symbol "|>"]
+        [InfixL $ BinaryOp "|>" <$ symbol "|>"],
+        [InfixL $ BinaryOp "$" <$ symbol1 '$']
       ]
 
 pTerm :: Parser Expr
