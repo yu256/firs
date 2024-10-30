@@ -25,7 +25,7 @@ data Expr
   | FuncCall Expr [Expr]
   | Block (NonEmpty Expr)
   | Bind String Expr
-  | VarDeclare String Expr
+  | VarDeclare String Type Expr
   | Assign String Expr
   | FuncDeclare String [(String, Type)] Type Expr -- Function Name, [(ArgName, Type)], ReturnType, Body
   deriving (Show, Eq)
@@ -63,6 +63,9 @@ parens = between (symbol1 '(') (symbol1 ')')
 identifier :: Parser String
 identifier = lexeme $ (:) <$> letterChar <*> many alphaNumChar
 
+typeAnnotation :: Parser (NonEmpty String)
+typeAnnotation = fromList <$> (symbol1 ':' *> some identifier)
+
 pNumLit :: Parser Expr
 pNumLit =
   NumLit
@@ -97,7 +100,7 @@ pBind :: Parser Expr
 pBind = Bind <$> identifier <* symbol1 '=' <*> pExpr
 
 pVarDeclare :: Parser Expr
-pVarDeclare = VarDeclare <$> identifier <* symbol ":=" <*> pExpr
+pVarDeclare = VarDeclare <$> identifier <*> typeAnnotation <* symbol ":=" <*> pExpr
 
 pAssign :: Parser Expr
 pAssign = Assign <$> identifier <* symbol "<-" <*> pExpr
@@ -117,7 +120,6 @@ pFuncDeclare = do
   symbol1 '='
   FuncDeclare funcName argAndTypes returnType <$> pExpr
   where
-    typeAnnotation = fromList <$> (symbol1 ':' *> some identifier)
     pArgs = (,) <$> identifier <*> typeAnnotation
 
 pExpr :: Parser Expr

@@ -75,9 +75,17 @@ codegenExpr (Bind name expr) = do
   val <- codegenExpr expr
   lift $ lift $ addVar name val
   pure val
-codegenExpr (VarDeclare name expr) = do
+codegenExpr (VarDeclare name typeName expr) = do
+  let llvmType = toLLVMType typeName
+  ptr <- alloca llvmType Nothing 0
   val <- codegenExpr expr
-  lift $ lift $ addVar name val
+  store ptr 0 val
+  lift $ lift $ addVar name ptr
+  pure ptr
+codegenExpr (Assign name expr) = do
+  ptr <- lift $ lift $ lookupVar name
+  val <- codegenExpr expr
+  store ptr 0 val
   pure val
 codegenExpr (UnaryOp op hs) = do
   hs' <- codegenExpr hs
