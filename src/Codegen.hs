@@ -1,3 +1,4 @@
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE OverloadedStrings #-}
 
@@ -11,7 +12,7 @@ import qualified Data.List.NonEmpty as NE
 import qualified Data.Map as Map
 import Data.String (IsString (fromString))
 import Data.Text.Lazy (Text)
-import LLVM.AST hiding (Type, args, function)
+import qualified LLVM.AST as AST
 import LLVM.AST.AddrSpace (AddrSpace (AddrSpace))
 import qualified LLVM.AST.CallingConvention as CC
 import qualified LLVM.AST.Constant as C
@@ -32,8 +33,8 @@ type Codegen = State CodegenState
 type CodegenIRBuilder = IRBuilderT (ModuleBuilderT Codegen)
 
 data CodegenState = CodegenState
-  { symTable :: [[(String, Operand)]],
-    strCache :: Map.Map String Operand
+  { symTable :: [[(String, AST.Operand)]],
+    strCache :: Map.Map String AST.Operand
   }
 
 initialCodegenState :: CodegenState
@@ -52,7 +53,7 @@ toLLVMType ("Ptr" :| []) = error "Kind of Pointer type is (* -> *)."
 toLLVMType ("Ptr" :| t : rest) = T.ptr . toLLVMType $ t :| rest
 toLLVMType invalid = error $ "Invalid Type: " ++ show (NE.intersperse " " invalid)
 
-codegenExpr :: Expr -> CodegenIRBuilder Operand
+codegenExpr :: Expr -> CodegenIRBuilder AST.Operand
 codegenExpr (NumLit lit) =
   pure . O.ConstantOperand $ case lit of
     IntLit n -> C.Int 32 n
@@ -90,9 +91,9 @@ codegenExpr (Assign name expr) = do
 codegenExpr (UnaryOp op hs) = do
   hs' <- codegenExpr hs
   case op of
-    "!" -> emitInstr T.i1 $ I.Xor hs' (ConstantOperand $ C.Int 1 1) []
+    "!" -> emitInstr T.i1 $ I.Xor hs' (O.ConstantOperand $ C.Int 1 1) []
     "deref" -> case typeOf hs' of
-      PointerType t _ -> emitInstr t $ I.Load False hs' Nothing 0 []
+      T.PointerType t _ -> emitInstr t $ I.Load False hs' Nothing 0 []
       t -> error $ show t ++ "cannot be dereferenced."
     _ -> error $ "Unknown unary operator: " ++ op
 codegenExpr (BinaryOp "|>" lhs rhs) =
@@ -169,21 +170,21 @@ codegenExpr (IfExpr condExpr thenExpr mayBeElseExpr) = do
       pure $ O.ConstantOperand $ C.Undef T.void
 codegenExpr e = error $ "Unsupported expression: " ++ show e
 
-generateBasicBlock :: Expr -> ModuleBuilderT Codegen [BasicBlock]
+generateBasicBlock :: Expr -> ModuleBuilderT Codegen [AST.BasicBlock]
 generateBasicBlock body =
   snd
     <$> runIRBuilderT
       emptyIRBuilder
       (block `named` "entry" *> codegenExpr body >>= ret)
 
-lookupVar :: String -> Codegen Operand
+lookupVar :: String -> Codegen AST.Operand
 lookupVar name = do
   symTblStack <- gets symTable
   case lookupInScopes name symTblStack of
     Just op -> pure op
     Nothing -> error $ "Unknown variable: " ++ name
   where
-    lookupInScopes :: String -> [[(String, Operand)]] -> Maybe Operand
+    lookupInScopes :: String -> [[(String, AST.Operand)]] -> Maybe AST.Operand
     lookupInScopes _ [] = Nothing
     lookupInScopes name_ (scope : rest) =
       case lookup name_ scope of
@@ -197,13 +198,13 @@ popScope :: Codegen ()
 popScope = modify $ \s -> s {symTable = tail $ symTable s}
 
 -- 現在のスコープにOperandを追加する
-addVar :: String -> Operand -> Codegen ()
+addVar :: String -> AST.Operand -> Codegen ()
 addVar name op = modify $ \s ->
   case symTable s of
     currentScope : rest -> s {symTable = ((name, op) : currentScope) : rest}
     [] -> s
 
-generateDef :: Expr -> ModuleBuilderT Codegen Operand
+generateDef :: Expr -> ModuleBuilderT Codegen AST.Operand
 generateDef (FuncDeclare name params retType body) = do
   let args = map (Bifunctor.second toLLVMType) params
   let returnType = toLLVMType retType
@@ -214,34 +215,29 @@ generateDef (FuncDeclare name params retType body) = do
 
   -- lift pushScope 下の処理で同時にScopeをpushしている
 
-  let paramOperands = map (\(paramName, paramType) -> (paramName, LocalReference (toLLVMType paramType) (fromString paramName))) params
+  let paramOperands = map (\(paramName, paramType) -> (paramName, O.LocalReference paramType (fromString paramName))) args
   modify $ \s -> s {symTable = paramOperands : symTable s}
 
   blocks <- generateBasicBlock body
 
-  emitDefn $ genFunction name args returnType blocks
+  emitDefn $
+    AST.GlobalDefinition
+      G.functionDefaults
+        { G.name = fromString name,
+          G.parameters = (map (\(n, ty) -> G.Parameter ty (fromString n) []) args, False),
+          G.returnType = returnType,
+          G.basicBlocks = blocks
+        }
 
   lift popScope
   pure fn
-  where
-    genFunction :: String -> [(String, T.Type)] -> T.Type -> [BasicBlock] -> Definition
-    genFunction name_ args retType_ body_ =
-      let parameters = map (\(n, ty) -> G.Parameter ty (fromString n) []) args
-       in GlobalDefinition
-            G.functionDefaults
-              { G.name = fromString name_,
-                G.parameters = (parameters, False),
-                G.returnType = retType_,
-                G.basicBlocks = body_
-              }
 generateDef _ = error "Only functions can be declared at the top level."
 
-codegenProgram :: [String] -> [Expr] -> Module
+codegenProgram :: [String] -> [Expr] -> AST.Module
 codegenProgram externs exprs =
   evalState
     ( buildModuleT "program" $ do
-        opsE <- externCFunc externs
-        case opsE of
+        externCFunc externs >>= \case
           Right ops -> put $ CodegenState [ops] Map.empty
           Left l -> error l
         traverse_ generateDef exprs
