@@ -4,9 +4,10 @@
 
 module Codegen (printLLVM) where
 
+import Control.Applicative (Alternative ((<|>)))
 import Control.Monad.State
 import qualified Data.Bifunctor as Bifunctor
-import Data.Foldable (traverse_)
+import Data.Foldable (for_, traverse_)
 import Data.List.NonEmpty (NonEmpty ((:|)))
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map as Map
@@ -33,8 +34,8 @@ type Codegen = State CodegenState
 type CodegenIRBuilder = IRBuilderT (ModuleBuilderT Codegen)
 
 data CodegenState = CodegenState
-  { symTable :: [[(String, AST.Operand)]],
-    strCache :: Map.Map String AST.Operand
+  { symTable :: [[(String, O.Operand)]],
+    strCache :: Map.Map String O.Operand
   }
 
 initialCodegenState :: CodegenState
@@ -42,18 +43,24 @@ initialCodegenState =
   CodegenState [] Map.empty
 
 toLLVMType :: Type -> T.Type
-toLLVMType ["Int"] = T.i32
-toLLVMType ["Long"] = T.i64
-toLLVMType ["Float"] = T.float
-toLLVMType ["Double"] = T.double
-toLLVMType ["Char"] = T.i8
-toLLVMType ["String"] = T.ptr T.i8
-toLLVMType ["Bool"] = T.i1
-toLLVMType ("Ptr" :| []) = error "Kind of Pointer type is (* -> *)."
-toLLVMType ("Ptr" :| t : rest) = T.ptr . toLLVMType $ t :| rest
-toLLVMType invalid = error $ "Invalid Type: " ++ show (NE.intersperse " " invalid)
+toLLVMType = \case
+  ["Int"] -> T.i32
+  ["Long"] -> T.i64
+  ["Float"] -> T.float
+  ["Double"] -> T.double
+  ["Char"] -> T.i8
+  ["Bool"] -> T.i1
+  ["String"] -> T.ptr T.i8
+  ('A' : 'r' : 'r' : 'a' : 'y' : _) :| [] -> error "Kind of Array type is (* -> *)."
+  ('A' : 'r' : 'r' : 'a' : 'y' : len) :| t : rest ->
+    case reads len :: [(Int, String)] of
+      [(n, "")] -> T.ArrayType (fromIntegral n) (toLLVMType $ t :| rest)
+      _ -> error "Invalid Array length in type."
+  "Ptr" :| [] -> error "Kind of Pointer type is (* -> *)."
+  "Ptr" :| t : rest -> T.ptr . toLLVMType $ t :| rest
+  invalid -> error $ "Invalid Type: " ++ show (NE.intersperse " " invalid)
 
-codegenExpr :: Expr -> CodegenIRBuilder AST.Operand
+codegenExpr :: Expr -> CodegenIRBuilder O.Operand
 codegenExpr (NumLit lit) =
   pure . O.ConstantOperand $ case lit of
     IntLit n -> C.Int 32 n
@@ -71,6 +78,23 @@ codegenExpr (StringLit str) = do
       pure op
 codegenExpr (BoolLit bool) =
   pure $ O.ConstantOperand $ C.Int 1 $ if bool then 1 else 0
+codegenExpr (ArrayLit exprs) = do
+  ops <- traverse codegenExpr exprs
+  let elemType = case ops of
+        [] -> error "Empty array literals are not supported."
+        (op1 : _) -> typeOf op1
+      arrType = T.ArrayType (fromIntegral $ length ops) elemType
+
+  unless (all ((== elemType) . typeOf) ops) $
+    error "All elements in an array literal must be of the same type."
+
+  arrPtr <- alloca arrType Nothing 0
+
+  for_ (zip [0 ..] ops) $ \(i, op) -> do
+    elemPtr <- gep arrPtr [int32 0, int32 i]
+    store elemPtr 0 op
+
+  pure arrPtr
 codegenExpr (Var name) = lift $ lift $ lookupVar name
 codegenExpr (Bind name expr) = do
   val <- codegenExpr expr
@@ -177,19 +201,15 @@ generateBasicBlock body =
       emptyIRBuilder
       (block `named` "entry" *> codegenExpr body >>= ret)
 
-lookupVar :: String -> Codegen AST.Operand
-lookupVar name = do
-  symTblStack <- gets symTable
-  case lookupInScopes name symTblStack of
+lookupVar :: String -> Codegen O.Operand
+lookupVar name =
+  gets (lookupInScopes . symTable) >>= \case
     Just op -> pure op
     Nothing -> error $ "Unknown variable: " ++ name
   where
-    lookupInScopes :: String -> [[(String, AST.Operand)]] -> Maybe AST.Operand
-    lookupInScopes _ [] = Nothing
-    lookupInScopes name_ (scope : rest) =
-      case lookup name_ scope of
-        Just op -> Just op
-        Nothing -> lookupInScopes name rest
+    lookupInScopes [] = Nothing
+    lookupInScopes (scope : rest) =
+      lookup name scope <|> lookupInScopes rest
 
 pushScope :: Codegen ()
 pushScope = modify $ \s -> s {symTable = [] : symTable s}
@@ -198,13 +218,13 @@ popScope :: Codegen ()
 popScope = modify $ \s -> s {symTable = tail $ symTable s}
 
 -- 現在のスコープにOperandを追加する
-addVar :: String -> AST.Operand -> Codegen ()
+addVar :: String -> O.Operand -> Codegen ()
 addVar name op = modify $ \s ->
   case symTable s of
     currentScope : rest -> s {symTable = ((name, op) : currentScope) : rest}
     [] -> s
 
-generateDef :: Expr -> ModuleBuilderT Codegen AST.Operand
+generateDef :: Expr -> ModuleBuilderT Codegen O.Operand
 generateDef (FuncDeclare name params retType body) = do
   let args = map (Bifunctor.second toLLVMType) params
   let returnType = toLLVMType retType
