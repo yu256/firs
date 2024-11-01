@@ -80,22 +80,21 @@ codegenExpr (BoolLit bool) =
   pure $ O.ConstantOperand $ C.Int 1 $ if bool then 1 else 0
 codegenExpr (ArrayLit exprs) = do
   ops <- traverse codegenExpr exprs
-  case ops of
-    [] -> error "Empty array literals are not supported."
-    op1 : _ -> do
-      let elemType = typeOf op1
-          arrType = T.ArrayType (fromIntegral $ length ops) elemType
+  let elemType = case ops of
+        [] -> error "Empty array literals are not supported."
+        (op1 : _) -> typeOf op1
+      arrType = T.ArrayType (fromIntegral $ length ops) elemType
 
-      unless (all ((== elemType) . typeOf) ops) $
-        error "All elements in an array literal must be of the same type."
+  unless (all ((== elemType) . typeOf) ops) $
+    error "All elements in an array literal must be of the same type."
 
-      vecPtr <- alloca arrType Nothing 0
+  arrPtr <- alloca arrType Nothing 0
 
-      for_ (zip [0 ..] ops) $ \(i, op) -> do
-        elemPtr <- gep vecPtr [int32 0, int32 i]
-        store elemPtr 0 op
+  for_ (zip [0 ..] ops) $ \(i, op) -> do
+    elemPtr <- gep arrPtr [int32 0, int32 i]
+    store elemPtr 0 op
 
-      load vecPtr 0
+  pure arrPtr
 codegenExpr (Var name) = lift $ lift $ lookupVar name
 codegenExpr (Bind name expr) = do
   val <- codegenExpr expr
@@ -155,6 +154,15 @@ codegenExpr (FuncCall (Var varName) args) = do
     O.ConstantOperand (C.GlobalReference (T.PointerType (T.FunctionType retType _ _) _) _) ->
       emitInstr retType $ I.Call Nothing CC.C [] (Right funcOp) [(arg, []) | arg <- args'] [] []
     _ -> error $ "Calling non-function type: " ++ varName
+codegenExpr (PtrAccess expr indexExpr) = do
+  arrayOp <- codegenExpr expr
+  indexOp <- codegenExpr indexExpr
+
+  case typeOf arrayOp of
+    T.PointerType _ _ -> do
+      elemPtr <- gep arrayOp [int32 0, indexOp]
+      load elemPtr 0
+    _ -> error "Array access is only valid for pointers to arrays."      
 codegenExpr expr@FuncDeclare {} = lift $ generateDef expr
 codegenExpr (Block exprs) = do
   lift $ lift pushScope

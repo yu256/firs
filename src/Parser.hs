@@ -23,6 +23,7 @@ data Expr
   | BinaryOp String Expr Expr
   | IfExpr Expr Expr (Maybe Expr)
   | FuncCall Expr [Expr]
+  | PtrAccess Expr Expr
   | Block (NonEmpty Expr)
   | Bind String Expr
   | VarDeclare String Type Expr
@@ -128,9 +129,12 @@ pExpr = makeExprParser pTerm operatorTable
     pFuncCallArgs :: Parser (Expr -> Expr)
     pFuncCallArgs = flip FuncCall <$> parens (pExpr `sepBy` symbol1 ',')
 
+    pPtrAccess :: Parser (Expr -> Expr)
+    pPtrAccess = flip PtrAccess <$> (symbol1 '[' *> pExpr <* symbol1 ']')
+
     operatorTable :: [[Operator Parser Expr]]
     operatorTable =
-      [ [Postfix pFuncCallArgs],
+      [ [Postfix pFuncCallArgs, Postfix pPtrAccess],
         [Prefix $ UnaryOp "!" <$ symbol1 '!'],
         [Prefix $ UnaryOp "deref" <$ symbol1 '*'],
         [InfixL $ BinaryOp "*" <$ symbol1 '*', InfixL $ BinaryOp "/" <$ symbol1 '/'],
